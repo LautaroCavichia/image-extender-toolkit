@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from flask import Flask, request, jsonify, send_file
+from collections import Counter
 from PIL import Image
 import io
 
@@ -13,7 +14,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-def resize_with_edge_blur(image, blur_strength, deadzone_percent, plain_background_mode=False):
+def resize_with_edge_blur(image, blur_strength, deadzone_percent):
     """
     Resize the image to the target size with aggressive radial edge blur or plain background handling.
     If plain_background_mode is True, the background will be filled with a solid color or gradient.
@@ -32,30 +33,12 @@ def resize_with_edge_blur(image, blur_strength, deadzone_percent, plain_backgrou
     left_pad = (TARGET_WIDTH - original_width) // 2
     right_pad = TARGET_WIDTH - original_width - left_pad
 
-    if plain_background_mode:
-        # Check if the background is plain by inspecting corner pixel values
-        top_left = image[0, 0]
-        top_right = image[0, original_width - 1]
-        bottom_left = image[original_height - 1, 0]
-        bottom_right = image[original_height - 1, original_width - 1]
-        
-        # If all corner pixels are similar, assume plain background
-        if np.allclose(top_left, top_right) and np.allclose(top_left, bottom_left) and np.allclose(top_left, bottom_right):
-            # Use the background color or gradient for padding
-            background_color = top_left  # Assuming top-left is the background color
-            expanded_image = np.full((TARGET_HEIGHT, TARGET_WIDTH, 4), background_color, dtype=np.uint8)
-        else:
-            # Fall back to reflection if not plain background
-            expanded_image = cv2.copyMakeBorder(
-                image, top_pad, bottom_pad, left_pad, right_pad, 
-                borderType=cv2.BORDER_REFLECT
-            )
-    else:
+   
         # Use reflection (default mode)
-        expanded_image = cv2.copyMakeBorder(
-            image, top_pad, bottom_pad, left_pad, right_pad, 
-            borderType=cv2.BORDER_REFLECT
-        )
+    expanded_image = cv2.copyMakeBorder(
+        image, top_pad, bottom_pad, left_pad, right_pad, 
+        borderType=cv2.BORDER_REFLECT
+        )  
 
     height, width = expanded_image.shape[:2]
     center_y, center_x = height // 2, width // 2
@@ -96,9 +79,47 @@ def resize_with_edge_blur(image, blur_strength, deadzone_percent, plain_backgrou
 
     return Image.fromarray(result)
 
+def get_dominant_color(image):
+    # Convert image to RGB
+    image_rgb = image.convert('RGB')
+    
+    # Get the image data as a flattened list of RGB tuples
+    pixels = np.array(image_rgb).reshape(-1, 3)
+    
+    # Find the most common color in the image (using Counter to get frequency of colors)
+    colors = Counter(map(tuple, pixels))
+    dominant_color = colors.most_common(1)[0][0]
+    
+    return dominant_color
 
+# Function to expand the image with the dominant background color
+def expand_with_dominant_color(image, target_width, target_height):
+    # Get the dominant background color
+    dominant_color = get_dominant_color(image)
+    
+    # Create a new image with the target dimensions and the dominant background color
+    expanded_image = Image.new('RGB', (target_width, target_height), dominant_color)
+    
+    # Paste the original image in the center of the new image
+    expanded_image.paste(image, (int((target_width - image.width) / 2), int((target_height - image.height) / 2)))
+    
+    return expanded_image
 
-@app.route('/process', methods=['POST'])
+def upscale_image(image, min_height):
+    # Get the current width and height of the image
+    width, height = image.size
+    
+    # If the height is less than the minimum required height
+    if height < min_height:
+        # Calculate the new width to maintain the aspect ratio
+        new_height = min_height
+        new_width = int((new_height / height) * width)
+        
+        # Resize the image while maintaining the aspect ratio
+        image = image.resize((new_width, new_height), Image.LANCZOS)
+    
+    return image
+
 @app.route('/process', methods=['POST'])
 def process_image():
     if 'image' not in request.files:
@@ -116,9 +137,15 @@ def process_image():
     
     # Check if plain background mode is enabled (from the checkbox in the form)
     plain_background_mode = request.form.get('plain_background_mode', 'false') == 'true'
+    print(plain_background_mode)
 
+    image = upscale_image(image, min_height=1000)
     # Process the image with the new option for plain background mode
-    processed_image = resize_with_edge_blur(image, blur_strength, deadzone, plain_background_mode)
+
+    if plain_background_mode:
+        processed_image = expand_with_dominant_color(image, TARGET_WIDTH, TARGET_HEIGHT)
+    else:
+        processed_image = resize_with_edge_blur(image, blur_strength, deadzone)
 
     # Save the processed image to a byte stream and send it back
     img_io = io.BytesIO()

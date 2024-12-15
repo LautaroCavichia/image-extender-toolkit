@@ -235,42 +235,46 @@
         }
 
         processButton.addEventListener('click', async () => {
-            const file = fileInput.files[0];
-            if (!file) return;
+    const file = fileInput.files[0];
+    if (!file) return;
 
-            const formData = new FormData();
-            formData.append('image', file);
-            formData.append('blur_strength', blurStrength.value);
-            formData.append('deadzone', deadzone.value);
-            formData.append('plain_background_mode', plainBackgroundMode.checked ? 'true' : 'false'); // Pass the checkbox value
+    // Ensure we pass the correct value for the plain_background_mode checkbox
+    const plainBackgroundModeValue = plainBackgroundMode.checked ? 'true' : 'false';
 
-            processButton.disabled = true;
-            processButton.textContent = 'Processing...';
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('blur_strength', blurStrength.value);
+    formData.append('deadzone', deadzone.value);
+    formData.append('plain_background_mode', plainBackgroundModeValue); // Pass the checkbox value
 
-            try {
-                const response = await fetch('/process', {
-                    method: 'POST',
-                    body: formData
-                });
+    processButton.disabled = true;
+    processButton.textContent = 'Processing...';
 
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const imageUrl = URL.createObjectURL(blob);
-                    
-                    previewImage.src = imageUrl;
-                    previewImage.style.display = 'block';
-                    
-                    downloadLink.href = imageUrl;
-                    downloadLink.download = 'processed_image.png';
-                    downloadLink.style.display = 'block';
-                }
-            } catch (error) {
-                console.error('Error:', error);
-            } finally {
-                processButton.disabled = false;
-                processButton.textContent = 'Process Image';
-            }
+    try {
+        const response = await fetch('/process', {
+            method: 'POST',
+            body: formData
         });
+
+        if (response.ok) {
+            const blob = await response.blob();
+            const imageUrl = URL.createObjectURL(blob);
+            
+            previewImage.src = imageUrl;
+            previewImage.style.display = 'block';
+            
+            downloadLink.href = imageUrl;
+            downloadLink.download = 'processed_image.png';
+            downloadLink.style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Error:', error);
+    } finally {
+        processButton.disabled = false;
+        processButton.textContent = 'Process Image';
+    }
+});
+
     </script>
 </body>
 </html>
