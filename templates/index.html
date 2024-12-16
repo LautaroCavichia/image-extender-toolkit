@@ -4,277 +4,263 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Image Processor</title>
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
     <style>
-        :root {
-            --primary-color: #2563eb;
-            --background-color: #f8fafc;
-            --card-background: #ffffff;
-            --text-color: #1e293b;
-            --border-color: #e2e8f0;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background-color: var(--background-color);
-            color: var(--text-color);
-            line-height: 1.5;
-            padding: 2rem;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
         }
 
         .container {
-            max-width: 400px;
-            margin: 0 auto;
+            text-align: center; 
+            max-width: 600px;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0px 4px 30px rgba(0, 0, 0, 0.2);
         }
 
-        .card {
-            background: var(--card-background);
-            border-radius: 12px;
-            padding: 2rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
         }
 
         .drop-area {
-            border: 2px dashed var(--border-color);
+            border: 2px dashed rgba(255, 255, 255, 0.6);
+            border-radius: 8px;
+            padding: 3rem;
+            text-align: center;
+            margin-bottom: 2rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .drop-area:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: #fff;
+        }
+
+        .popup {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #fff;
+            color: #000;
+            width: 90%;
+            max-width: 400px;
             border-radius: 8px;
             padding: 2rem;
             text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
         }
 
-        .drop-area.dragover {
-            border-color: var(--primary-color);
-            background-color: rgba(37, 99, 235, 0.05);
-        }
-
-        .controls {
-            display: flex;
-            flex-direction: column;
+        .popup .options {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
             gap: 1rem;
-            margin-bottom: 1.5rem;
+            margin-top: 1rem;
         }
 
-        .control-group {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .slider {
-            width: 100%;
-            height: 4px;
-            -webkit-appearance: none;
-            background: var(--border-color);
-            border-radius: 2px;
-            outline: none;
-        }
-
-        .slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 16px;
-            height: 16px;
-            background: var(--primary-color);
-            border-radius: 50%;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .slider::-webkit-slider-thumb:hover {
-            transform: scale(1.1);
-        }
-
-        .preview-container {
-            margin-top: 1.5rem;
-            text-align: center;
-        }
-
-        .preview-image {
-            max-width: 100%;
-            height: auto;
+        .option {
+            background: rgba(37, 99, 235, 0.1);
+            padding: 1rem;
             border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s ease, background 0.2s ease;
+        }
+
+        .option:hover {
+            background: rgba(37, 99, 235, 0.2);
+            transform: translateY(-5px);
+        }
+
+        .spinner {
+            display: none;
+            margin-top: 1rem;
+        }
+
+        .success {
+            display: none;
+            margin-top: 1rem;
+        }
+
+        .preview {
+            margin-top: 1rem;
             display: none;
         }
 
         .button {
-            background-color: var(--primary-color);
-            color: white;
-            border: none;
+            background: #2563eb;
+            color: #fff;
             padding: 0.75rem 1.5rem;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.2s ease;
-            width: 100%;
+            border-radius: 8px;
+            font-weight: bold;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            display: inline-block;
+            margin-top: 1rem;
         }
 
         .button:hover {
-            opacity: 0.9;
-            transform: translateY(-1px);
-        }
-
-        .button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .value-display {
-            font-size: 0.875rem;
-            color: var(--text-color);
-            opacity: 0.8;
+            background: #1d4ed8;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="card">
-            <div class="drop-area" id="dropArea">
-                <p>Drag and drop your image here<br>or click to select</p>
-                <input type="file" id="fileInput" hidden accept="image/*">
-            </div>
-
-            <div class="controls">
-                <div class="control-group">
-                    <label for="blur_strength">Blur Strength</label>
-                    <input type="range" id="blur_strength" class="slider" min="10" max="800" value="400">
-                    <span class="value-display" id="blur_value">400</span>
+        <h1>Image Processor</h1>
+        <div class="drop-area" id="dropArea">
+            <p><i class="fas fa-upload"></i></p>
+            <p>Drag and drop your image here or click to select</p>
+            <input type="file" id="fileInput" hidden accept="image/*">
+        </div>
+        <div class="popup" id="popup">
+            <h2>Select an Operation</h2>
+            <div class="options">
+                <div class="option" id="removeBg-fast">
+                    <i class="fas fa-eraser"></i>
+                    <p>Remove Background fast</p>
                 </div>
-
-                <div class="control-group">
-                    <label for="deadzone">Deadzone</label>
-                    <input type="range" id="deadzone" class="slider" min="10" max="50" value="20">
-                    <span class="value-display" id="deadzone_value">20%</span>
+                <div class="option" id="removeBg-precise">
+                    <i class="fas fa-eraser"></i>
+                    <p>Remove Background precise</p>
                 </div>
-
-                <!-- Checkbox for plain background mode -->
-                <div class="control-group">
-                    <label for="plain_background_mode">Enable Plain Background Mode</label>
-                    <input type="checkbox" id="plain_background_mode" name="plain_background_mode">
+                <div class="option" id="expandImage">
+                    <i class="fas fa-expand-alt"></i>
+                    <p>Content-Aware Expand</p>
+                </div>
+                <div class="option" id="expandColor">
+                    <i class="fas fa-fill-drip"></i>
+                    <p>Color Expand</p>
                 </div>
             </div>
-
-            <button id="processButton" class="button" disabled>Process Image</button>
-
-            <div class="preview-container">
-                <img id="previewImage" class="preview-image" alt="Processed image">
-                <a id="downloadLink" style="display: none;">
-                    <button class="button" style="margin-top: 1rem;">Download Image</button>
-                </a>
-            </div>
+        </div>
+        <div class="spinner" id="spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Processing...</p>
+        </div>
+        <div class="preview" id="preview">
+            <img src="" alt="Processed Image" id="previewImg" style="max-width:300px; border-radius: 8px;">
+        </div>
+        <div class="success" id="success">
+            <p>Operation completed! Download your image below:</p>
+            <a href="#" class="button" id="downloadBtn">Download Image</a>
         </div>
     </div>
 
     <script>
+        // DOM Elements
         const dropArea = document.getElementById('dropArea');
         const fileInput = document.getElementById('fileInput');
-        const processButton = document.getElementById('processButton');
-        const previewImage = document.getElementById('previewImage');
-        const downloadLink = document.getElementById('downloadLink');
-        const blurStrength = document.getElementById('blur_strength');
-        const deadzone = document.getElementById('deadzone');
-        const blurValue = document.getElementById('blur_value');
-        const deadzoneValue = document.getElementById('deadzone_value');
-        const plainBackgroundMode = document.getElementById('plain_background_mode');
-
-        // Drag and drop handlers
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropArea.addEventListener(eventName, preventDefaults, false);
-        });
-
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropArea.addEventListener(eventName, () => {
-                dropArea.classList.add('dragover');
-            });
-        });
-
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropArea.addEventListener(eventName, () => {
-                dropArea.classList.remove('dragover');
-            });
-        });
-
-        dropArea.addEventListener('drop', handleDrop);
+        const popup = document.getElementById('popup');
+        const spinner = document.getElementById('spinner');
+        const success = document.getElementById('success');
+        const preview = document.getElementById('preview');
+        const previewImg = document.getElementById('previewImg');
+        const downloadBtn = document.getElementById('downloadBtn');
+    
+        let selectedFile = null;
+    
+        // Drag-and-Drop Handlers
         dropArea.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', handleFileSelect);
-
-        // Update value displays
-        blurStrength.addEventListener('input', () => {
-            blurValue.textContent = blurStrength.value;
+    
+        dropArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropArea.style.background = 'rgba(255, 255, 255, 0.1)';
         });
-
-        deadzone.addEventListener('input', () => {
-            deadzoneValue.textContent = `${deadzone.value}%`;
+    
+        dropArea.addEventListener('dragleave', () => {
+            dropArea.style.background = 'transparent';
         });
-
-        function handleDrop(e) {
-            const dt = e.dataTransfer;
-            const files = dt.files;
+    
+        dropArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropArea.style.background = 'transparent';
+            const files = e.dataTransfer.files;
             handleFiles(files);
-        }
-
-        function handleFileSelect(e) {
-            const files = e.target.files;
-            handleFiles(files);
-        }
-
+        });
+    
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+    
+        // Handle File Selection
         function handleFiles(files) {
             if (files.length > 0) {
-                processButton.disabled = false;
+                selectedFile = files[0];
+                if (validateImage(selectedFile)) {
+                    popup.style.display = 'block';
+                } else {
+                    alert('Please upload a valid image file.');
+                }
             }
         }
-
-        processButton.addEventListener('click', async () => {
-    const file = fileInput.files[0];
-    if (!file) return;
-
-    // Ensure we pass the correct value for the plain_background_mode checkbox
-    const plainBackgroundModeValue = plainBackgroundMode.checked ? 'true' : 'false';
-
-    const formData = new FormData();
-    formData.append('image', file);
-    formData.append('blur_strength', blurStrength.value);
-    formData.append('deadzone', deadzone.value);
-    formData.append('plain_background_mode', plainBackgroundModeValue); // Pass the checkbox value
-
-    processButton.disabled = true;
-    processButton.textContent = 'Processing...';
-
-    try {
-        const response = await fetch('/process', {
-            method: 'POST',
-            body: formData
-        });
-
-        if (response.ok) {
-            const blob = await response.blob();
-            const imageUrl = URL.createObjectURL(blob);
-            
-            previewImage.src = imageUrl;
-            previewImage.style.display = 'block';
-            
-            downloadLink.href = imageUrl;
-            downloadLink.download = 'processed_image.png';
-            downloadLink.style.display = 'block';
+    
+        // Validate Uploaded File
+        function validateImage(file) {
+            const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+            if (!validTypes.includes(file.type)) {
+                console.error('Invalid file type:', file.type);
+                return false;
+            }
+            return true;
         }
-    } catch (error) {
-        console.error('Error:', error);
-    } finally {
-        processButton.disabled = false;
-        processButton.textContent = 'Process Image';
-    }
-});
-
+    
+        // Process Image with Selected Operation
+        async function processImage(action) {
+            if (!selectedFile) {
+                alert('No file selected. Please upload an image first.');
+                return;
+            }
+    
+            const formData = new FormData();
+            formData.append('image', selectedFile);
+            formData.append('operation', action);
+    
+            popup.style.display = 'none';
+            spinner.style.display = 'block';
+    
+            try {
+                const response = await fetch('/process', {
+                    method: 'POST',
+                    body: formData,
+                });
+    
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Processing failed.');
+                }
+    
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+    
+                // Show the result
+                spinner.style.display = 'none';
+                preview.style.display = 'block';
+                previewImg.src = url;
+    
+                success.style.display = 'block';
+                downloadBtn.href = url;
+                downloadBtn.download = 'processed-image.png';
+            } catch (error) {
+                console.error('Error during image processing:', error);
+                alert(`Something went wrong: ${error.message}`);
+                spinner.style.display = 'none';
+            }
+        }
+    
+        // Attach Event Listeners for Operation Buttons
+        document.getElementById('removeBg-fast').addEventListener('click', () => processImage('remove_bg_fast'));
+        document.getElementById('removeBg-precise').addEventListener('click', () => processImage('remove_bg_precise'));
+        document.getElementById('expandImage').addEventListener('click', () => processImage('expand_image'));
+        document.getElementById('expandColor').addEventListener('click', () => processImage('expand_color'));
     </script>
 </body>
 </html>

@@ -4,17 +4,15 @@ from flask import Flask, request, jsonify, send_file
 from collections import Counter
 from PIL import Image
 import io
+from rembg import remove
 
 app = Flask(__name__)
 
 TARGET_WIDTH = 1800
 TARGET_HEIGHT = 3200
 
-import cv2
-import numpy as np
-from PIL import Image
 
-def resize_with_edge_blur(image, blur_strength, deadzone_percent):
+def expand_with_edge_blur(image, blur_strength, deadzone_percent):
     """
     Resize the image to the target size with aggressive radial edge blur or plain background handling.
     If plain_background_mode is True, the background will be filled with a solid color or gradient.
@@ -27,11 +25,14 @@ def resize_with_edge_blur(image, blur_strength, deadzone_percent):
     if original_width >= TARGET_WIDTH and original_height >= TARGET_HEIGHT:
         return Image.fromarray(image)
 
-    # Calculate padding
-    top_pad = (TARGET_HEIGHT - original_height) // 2
-    bottom_pad = TARGET_HEIGHT - original_height - top_pad
-    left_pad = (TARGET_WIDTH - original_width) // 2
-    right_pad = TARGET_WIDTH - original_width - left_pad
+    offset_ratio = 0.15 
+    total_vertical_padding = TARGET_HEIGHT - original_height
+    top_pad = int(total_vertical_padding * (0.5 + offset_ratio))
+    bottom_pad = total_vertical_padding - top_pad
+
+    total_horizontal_padding = TARGET_WIDTH - original_width
+    left_pad = total_horizontal_padding // 2
+    right_pad = total_horizontal_padding - left_pad
 
    
         # Use reflection (default mode)
@@ -101,7 +102,17 @@ def expand_with_dominant_color(image, target_width, target_height):
     expanded_image = Image.new('RGB', (target_width, target_height), dominant_color)
     
     # Paste the original image in the center of the new image
-    expanded_image.paste(image, (int((target_width - image.width) / 2), int((target_height - image.height) / 2)))
+    # Calculate the offset for pasting
+    offset_ratio = 0.15  # 20% offset for more space at the top
+    vertical_padding = target_height - image.height
+    horizontal_padding = target_width - image.width
+
+    # Adjust the Y-coordinate for the offset
+    y_offset = int(vertical_padding * (0.5 + offset_ratio))  # Shift down by 20% more space at the top
+    x_offset = horizontal_padding // 2  # Centered horizontally
+
+    # Paste the original image at the adjusted position
+    expanded_image.paste(image, (x_offset, y_offset))
     
     return expanded_image
 
@@ -120,6 +131,65 @@ def upscale_image(image, min_height):
     
     return image
 
+
+def remove_background_lighter(image):
+    # Convert image to numpy array
+    image_np = np.array(image)
+
+    # Enhance contrast with CLAHE
+    lab = cv2.cvtColor(image_np, cv2.COLOR_RGB2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    cl = clahe.apply(l)
+    lab = cv2.merge((cl, a, b))
+    image_np = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+
+    # Apply Gaussian Blur to smooth out the image and reduce noise
+    image_np = cv2.GaussianBlur(image_np, (5, 5), 0)
+
+    # Generate initial mask with edge detection
+    edges = cv2.Canny(image_np, 100, 200)
+    mask = np.zeros(image_np.shape[:2], np.uint8)
+    mask[edges > 0] = cv2.GC_PR_FGD
+
+    # Rectangle initialization (adjust the rectangle as needed)
+    height, width = image_np.shape[:2]
+    rect = (20, 20, width - 40, height - 40)
+
+    # Background and foreground models for grabCut
+    bgd_model = np.zeros((1, 65), np.float64)
+    fgd_model = np.zeros((1, 65), np.float64)
+
+    # Apply grabCut with more iterations for refinement
+    cv2.grabCut(image_np, mask, rect, bgd_model, fgd_model, 15, cv2.GC_INIT_WITH_RECT)
+
+    # Refine mask by setting definite foreground and background regions
+    mask2 = np.copy(mask)
+    mask2[(mask == 2) | (mask == 0)] = 0
+    mask2[(mask == 1) | (mask == 3)] = 1
+
+    # Create the final image (foreground with alpha channel)
+    result_rgba = np.dstack([image_np, mask2.astype(np.uint8) * 255])
+
+    return Image.fromarray(result_rgba)
+
+
+def remove_background_precise(image):
+    """
+    Removes the background using rembg.
+    """
+    # Convert the input image to a numpy array
+    input_array = np.array(image.convert("RGBA"))
+    
+    # Use rembg to remove the background
+    output_array = remove(input_array)
+    
+    # Convert the output array back to a PIL Image
+    output_image = Image.fromarray(output_array)
+    
+    return output_image
+
+
 @app.route('/process', methods=['POST'])
 def process_image():
     if 'image' not in request.files:
@@ -128,36 +198,45 @@ def process_image():
     file = request.files['image']
     image = Image.open(file).convert("RGBA")
 
-    # Get the blur strength from the form data, ensuring it is odd
-    blur_strength = int(request.form.get('blur_strength', 300))
-    blur_strength = blur_strength + 1 if blur_strength % 2 == 0 else blur_strength
-    
-    # Get the deadzone percentage from the form data
-    deadzone = request.form.get('deadzone', 20)
-    
-    # Check if plain background mode is enabled (from the checkbox in the form)
-    plain_background_mode = request.form.get('plain_background_mode', 'false') == 'true'
-    print(plain_background_mode)
+    # Get the operation from the form data
+    operation = request.form.get('operation', 'resize')
 
+    # Preprocess
     image = upscale_image(image, min_height=1000)
-    # Process the image with the new option for plain background mode
 
-    if plain_background_mode:
+    if operation == 'remove_bg_fast':
+        processed_image = remove_background_lighter(image)
+    elif operation == 'remove_bg_precise':
+        processed_image = remove_background_precise(image)
+    elif operation == 'expand_image':
+        processed_image = expand_with_edge_blur(image, blur_strength=400, deadzone_percent=20)  
+    elif operation == 'expand_color':
         processed_image = expand_with_dominant_color(image, TARGET_WIDTH, TARGET_HEIGHT)
+    elif operation == 'resize':
+        # Default resize operation
+        blur_strength = int(request.form.get('blur_strength', 300))
+        blur_strength = blur_strength + 1 if blur_strength % 2 == 0 else blur_strength
+        deadzone = int(request.form.get('deadzone', 20))
+        plain_background_mode = request.form.get('plain_background_mode', 'false') == 'true'
+        if plain_background_mode:
+            processed_image = expand_with_dominant_color(image, TARGET_WIDTH, TARGET_HEIGHT)
+        else:
+            processed_image = expand_with_edge_blur(image, blur_strength, deadzone)
     else:
-        processed_image = resize_with_edge_blur(image, blur_strength, deadzone)
+        return jsonify({"error": "Invalid operation"}), 400
 
     # Save the processed image to a byte stream and send it back
     img_io = io.BytesIO()
     processed_image.save(img_io, 'PNG')
     img_io.seek(0)
 
-    return send_file(img_io, mimetype='image/png')
+    return send_file(img_io, mimetype='image/png', as_attachment=False)
 
 
 @app.route('/')
 def index():
     return send_file('templates/index.html')
+
 
 if __name__ == '__main__':
     app.run(debug=True)
