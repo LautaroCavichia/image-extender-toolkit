@@ -5,6 +5,9 @@ from collections import Counter
 from PIL import Image
 import io
 from rembg import remove
+import base64
+from pyinpaint import Inpaint
+import os
 
 app = Flask(__name__)
 
@@ -132,105 +135,173 @@ def upscale_image(image, min_height):
     return image
 
 
-def remove_background_lighter(image):
-    # Convert image to numpy array
-    image_np = np.array(image)
-
-    # Enhance contrast with CLAHE
-    lab = cv2.cvtColor(image_np, cv2.COLOR_RGB2LAB)
-    l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    cl = clahe.apply(l)
-    lab = cv2.merge((cl, a, b))
-    image_np = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
-
-    # Apply Gaussian Blur to smooth out the image and reduce noise
-    image_np = cv2.GaussianBlur(image_np, (5, 5), 0)
-
-    # Generate initial mask with edge detection
-    edges = cv2.Canny(image_np, 100, 200)
-    mask = np.zeros(image_np.shape[:2], np.uint8)
-    mask[edges > 0] = cv2.GC_PR_FGD
-
-    # Rectangle initialization (adjust the rectangle as needed)
-    height, width = image_np.shape[:2]
-    rect = (20, 20, width - 40, height - 40)
-
-    # Background and foreground models for grabCut
-    bgd_model = np.zeros((1, 65), np.float64)
-    fgd_model = np.zeros((1, 65), np.float64)
-
-    # Apply grabCut with more iterations for refinement
-    cv2.grabCut(image_np, mask, rect, bgd_model, fgd_model, 15, cv2.GC_INIT_WITH_RECT)
-
-    # Refine mask by setting definite foreground and background regions
-    mask2 = np.copy(mask)
-    mask2[(mask == 2) | (mask == 0)] = 0
-    mask2[(mask == 1) | (mask == 3)] = 1
-
-    # Create the final image (foreground with alpha channel)
-    result_rgba = np.dstack([image_np, mask2.astype(np.uint8) * 255])
-
-    return Image.fromarray(result_rgba)
-
-
-def remove_background_precise(image):
+def remove_background_precise(image, mask=None):
     """
-    Removes the background using rembg.
+    Removes the background using rembg and optionally refines with a mask.
+    
+    Args:
+        image: PIL Image object.
+        mask: Optional base64 string of the user-painted mask.
+    
+    Returns:
+        PIL Image with background refined using the mask.
     """
-    # Convert the input image to a numpy array
-    input_array = np.array(image.convert("RGBA"))
-    
-    # Use rembg to remove the background
-    output_array = remove(input_array)
-    
-    # Convert the output array back to a PIL Image
-    output_image = Image.fromarray(output_array)
-    
-    return output_image
+    try:
+        # Convert the input image to a numpy array
+        input_array = np.array(image.convert("RGBA"))
+        
+        # Step 1: Perform initial background removal with rembg
+        bg_removed_array = remove(input_array)
+        
+        # Ensure the array is writable (make a copy)
+        bg_removed_array = bg_removed_array.copy()
+
+        # Step 2: Apply additional mask refinement if a mask is provided
+        if mask:
+            # Decode and process the mask
+            mask_array = process_mask_data(mask)
+
+            # Ensure mask dimensions match the image
+            mask_array = cv2.resize(mask_array, (bg_removed_array.shape[1], bg_removed_array.shape[0]))
+
+            # Apply the mask to refine the removal
+            # (Set the masked areas to transparent)
+            bg_removed_array[mask_array == 255] = [0, 0, 0, 0]  # Transparent
+
+        # Convert the result back to a PIL Image
+        refined_image = Image.fromarray(bg_removed_array)
+
+        return refined_image
+
+    except Exception as e:
+        print(f"Error during background removal: {e}")
+        return image  # Return original image if an error occurs
 
 
+def process_mask_data(mask_data_url):
+    """
+    Convert base64 mask data to binary numpy array compatible with OpenCV.
+
+    Args:
+        mask_data_url: Base64-encoded mask image URL
+    Returns:
+        Binary mask as a numpy array (uint8)
+    """
+    try:
+        # Remove the data URL prefix
+        mask_base64 = mask_data_url.split(',')[1]
+        # Decode base64 to bytes
+        mask_bytes = base64.b64decode(mask_base64)
+        # Convert to numpy array
+        mask_arr = np.frombuffer(mask_bytes, np.uint8)
+        # Decode image
+        mask = cv2.imdecode(mask_arr, cv2.IMREAD_UNCHANGED)
+
+        # Convert to grayscale if necessary
+        if mask.ndim == 3:
+            mask = cv2.cvtColor(mask, cv2.COLOR_RGBA2GRAY)
+
+        # Ensure mask is binary (0 for inpaint region, 255 for background)
+        _, mask = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY)
+
+        return mask.astype(np.uint8)
+    except Exception as e:
+        print(f"Error processing mask: {str(e)}")
+        raise
+def remove_object(image, mask_data):
+    """
+    Remove object from image using OpenCV's inpainting methods.
+
+    Args:
+        image: PIL Image object.
+        mask_data: base64 string of mask data.
+    Returns:
+        PIL Image with object removed.
+    """
+    try:
+        # Convert PIL Image to OpenCV format (BGR)
+        org_img = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+
+        # Process the mask
+        mask = process_mask_data(mask_data)
+
+        # Ensure mask dimensions match the original image
+        mask = cv2.resize(mask, (org_img.shape[1], org_img.shape[0]))
+
+        # Perform inpainting using OpenCV
+        inpainted_img = cv2.inpaint(org_img, mask, inpaintRadius=3, flags=cv2.INPAINT_NS)
+
+        # Convert the result back to PIL Image
+        result = Image.fromarray(cv2.cvtColor(inpainted_img, cv2.COLOR_BGR2RGB))
+
+        return result
+
+    except Exception as e:
+        print(f"Error in remove_object: {str(e)}")
+        raise
+
+    except Exception as e:
+        print(f"Error in remove_object: {str(e)}")
+        raise
+    
 @app.route('/process', methods=['POST'])
 def process_image():
     if 'image' not in request.files:
         return jsonify({"error": "No image uploaded"}), 400
 
+    # Get the uploaded image
     file = request.files['image']
-    image = Image.open(file).convert("RGBA")
+    image = Image.open(file).convert("RGB")  # Convert to RGB for consistency
 
     # Get the operation from the form data
     operation = request.form.get('operation', 'resize')
+    
+    image = upscale_image(image, 1000)
 
-    # Preprocess
-    image = upscale_image(image, min_height=1000)
+    try:
+        # Get mask data from form if available
+        mask_data = request.form.get('mask')
 
-    if operation == 'remove_bg_fast':
-        processed_image = remove_background_lighter(image)
-    elif operation == 'remove_bg_precise':
-        processed_image = remove_background_precise(image)
-    elif operation == 'expand_image':
-        processed_image = expand_with_edge_blur(image, blur_strength=400, deadzone_percent=20)  
-    elif operation == 'expand_color':
-        processed_image = expand_with_dominant_color(image, TARGET_WIDTH, TARGET_HEIGHT)
-    elif operation == 'resize':
-        # Default resize operation
-        blur_strength = int(request.form.get('blur_strength', 300))
-        blur_strength = blur_strength + 1 if blur_strength % 2 == 0 else blur_strength
-        deadzone = int(request.form.get('deadzone', 20))
-        plain_background_mode = request.form.get('plain_background_mode', 'false') == 'true'
-        if plain_background_mode:
-            processed_image = expand_with_dominant_color(image, TARGET_WIDTH, TARGET_HEIGHT)
-        else:
+        if operation == 'remove_object':
+            if not mask_data:
+                return jsonify({"error": "No mask data provided for remove_object operation"}), 400
+            processed_image = remove_object(image, mask_data)
+
+        elif operation == 'remove_bg_precise':
+            # Process image with or without mask for precise background removal
+            processed_image = remove_background_precise(image, mask_data)
+
+        elif operation == 'expand_image':
+            # Expand image with edge blur
+            blur_strength = int(request.form.get('blur_strength', 300))
+            deadzone = int(request.form.get('deadzone', 20))
             processed_image = expand_with_edge_blur(image, blur_strength, deadzone)
-    else:
-        return jsonify({"error": "Invalid operation"}), 400
 
-    # Save the processed image to a byte stream and send it back
-    img_io = io.BytesIO()
-    processed_image.save(img_io, 'PNG')
-    img_io.seek(0)
+        elif operation == 'expand_color':
+            # Expand image using dominant color
+            target_width = int(request.form.get('target_width', 800))
+            target_height = int(request.form.get('target_height', 600))
+            processed_image = expand_with_dominant_color(image, target_width, target_height)
 
-    return send_file(img_io, mimetype='image/png', as_attachment=False)
+        elif operation == 'resize':
+            # Resize image logic
+            target_width = int(request.form.get('target_width', 800))
+            target_height = int(request.form.get('target_height', 600))
+            processed_image = image.resize((target_width, target_height))
+
+        else:
+            return jsonify({"error": "Invalid operation"}), 400
+
+        # Save the processed image to a byte stream and send it back
+        img_io = io.BytesIO()
+        processed_image.save(img_io, 'PNG')
+        img_io.seek(0)
+
+        return send_file(img_io, mimetype='image/png', as_attachment=False)
+
+    except Exception as e:
+        return jsonify({"error": f"Processing failed: {str(e)}"}), 500
+
 
 
 @app.route('/')
