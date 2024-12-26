@@ -1,526 +1,64 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
+<head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Image Processor</title>
-    <script
-      src="https://kit.fontawesome.com/a076d05399.js"
-      crossorigin="anonymous"
-    ></script>
-    <style>
-      body {
-        margin: 0;
-        font-family: Arial, sans-serif;
-        background: linear-gradient(135deg, #2563eb, #3b82f6);
-        color: #fff;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 100vh;
-        padding: 2rem 0;
-      }
-
-      .container {
-        text-align: center;
-        max-width: 800px;
-        width: 100%;
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 16px;
-        padding: 2rem;
-        box-shadow: 0px 4px 30px rgba(0, 0, 0, 0.2);
-        margin: 0 1rem;
-      }
-
-      h1 {
-        font-size: 2rem;
-        margin-bottom: 1.5rem;
-      }
-
-      .drop-area {
-        border: 2px dashed rgba(255, 255, 255, 0.6);
-        border-radius: 8px;
-        padding: 3rem;
-        text-align: center;
-        margin-bottom: 2rem;
-        cursor: pointer;
-        transition: all 0.3s ease;
-      }
-
-      .drop-area:hover {
-        background: rgba(255, 255, 255, 0.1);
-        border-color: #fff;
-      }
-
-      .canvas-container {
-        position: relative;
-        max-width: 800px;
-        margin: 1rem auto;
-        display: none;
-      }
-
-      #imageCanvas,
-      #drawCanvas {
-        position: absolute;
-        left: 0;
-        top: 0;
-        border-radius: 8px;
-        max-width: 100%;
-        height: auto;
-      }
-
-      #drawCanvas {
-        cursor: crosshair;
-      }
-
-      .drawing-controls {
-        margin-top: 1rem;
-        display: none;
-        background: rgba(0, 0, 0, 0.1);
-        padding: 1rem;
-        border-radius: 8px;
-      }
-
-      .brush-controls {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 1rem;
-        margin-bottom: 1rem;
-      }
-
-      .brush-size {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-      }
-
-      input[type="range"] {
-        width: 150px;
-      }
-
-      .popup {
-        display: none;
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: #fff;
-        color: #000;
-        width: 90%;
-        max-width: 400px;
-        border-radius: 8px;
-        padding: 2rem;
-        text-align: center;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-        z-index: 1000;
-      }
-
-      .popup .options {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 1rem;
-        margin-top: 1rem;
-      }
-
-      .option {
-        background: rgba(37, 99, 235, 0.1);
-        padding: 1rem;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: transform 0.2s ease, background 0.2s ease;
-      }
-
-      .option:hover {
-        background: rgba(37, 99, 235, 0.2);
-        transform: translateY(-5px);
-      }
-
-      .control-button {
-        background: #2563eb;
-        color: #fff;
-        padding: 0.75rem 1.5rem;
-        border-radius: 8px;
-        border: none;
-        margin: 0 0.5rem;
-        cursor: pointer;
-        font-weight: bold;
-        transition: all 0.3s ease;
-      }
-
-      .control-button:hover {
-        background: #1d4ed8;
-      }
-
-      .control-button.secondary {
-        background: rgba(255, 255, 255, 0.2);
-      }
-
-      .control-button.secondary:hover {
-        background: rgba(255, 255, 255, 0.3);
-      }
-
-      .spinner {
-        display: none;
-        margin-top: 1rem;
-      }
-
-      .success {
-        display: none;
-        margin-top: 1rem;
-      }
-
-      .preview {
-        margin-top: 1rem;
-        display: none;
-      }
-
-      .preview img {
-        max-width: 100%;
-        height: auto;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-      }
-
-      .button {
-        background: #2563eb;
-        color: #fff;
-        padding: 0.75rem 1.5rem;
-        border-radius: 8px;
-        font-weight: bold;
-        text-decoration: none;
-        transition: all 0.3s ease;
-        display: inline-block;
-        margin-top: 1rem;
-      }
-
-      .button:hover {
-        background: #1d4ed8;
-      }
-
-      .instructions {
-        background: rgba(255, 255, 255, 0.1);
-        padding: 1rem;
-        border-radius: 8px;
-        margin: 1rem 0;
-        text-align: left;
-        display: none;
-      }
-
-      .instructions h3 {
-        margin-top: 0;
-      }
-
-      .instructions ul {
-        margin: 0;
-        padding-left: 1.5rem;
-      }
-    </style>
-  </head>
-  <body>
+    <title>JIC Image Toolkit</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
     <div class="container">
-      <h1>Image Processor</h1>
-      <div class="drop-area" id="dropArea">
-        <p><i class="fas fa-upload"></i></p>
-        <p>Drag and drop your image here or click to select</p>
-        <input type="file" id="fileInput" hidden accept="image/*" />
-      </div>
-
-      <div class="instructions" id="maskInstructions">
-        <h3>How to Remove Objects</h3>
-        <ul>
-          <li>Draw over the objects you want to remove</li>
-          <li>Use the brush size slider to adjust the drawing thickness</li>
-          <li>Click "Clear Mask" to start over</li>
-          <li>Click "Remove Object" when ready to process</li>
-        </ul>
-      </div>
-
-      <div class="canvas-container" id="canvasContainer">
-        <canvas id="imageCanvas"></canvas>
-        <canvas id="drawCanvas"></canvas>
-      </div>
-
-      <div class="drawing-controls" id="drawingControls">
-        <div class="brush-controls">
-          <div class="brush-size">
-            <label for="brushSize">Brush Size:</label>
-            <input type="range" id="brushSize" min="5" max="50" value="20" />
-          </div>
+        <h1 class="title">JIC Image Toolkit</h1>
+        <div id="drop-zone" class="drop-zone">
+            <i data-lucide="upload-cloud" class="upload-icon"></i>
+            <p>Drag & Drop an Image Here or <span class="highlight">Click to Upload</span></p>
         </div>
-        <button class="control-button secondary" id="clearMask">
-          Clear Mask
-        </button>
-        <button class="control-button" id="applyMask">Remove Object</button>
-      </div>
 
-      <div class="popup" id="popup">
-        <h2>Select an Operation</h2>
-        <div class="options">
-          <div class="option" id="removeBg-precise">
-            <i class="fas fa-eraser"></i>
-            <p>Remove Background</p>
-          </div>
-          <div class="option" id="removeObject">
-            <i class="fas fa-object-ungroup"></i>
-            <p>Remove Object</p>
-          </div>
-          <div class="option" id="expandImage">
-            <i class="fas fa-expand-alt"></i>
-            <p>Content-Aware Expand</p>
-          </div>
-          <div class="option" id="expandColor">
-            <i class="fas fa-fill-drip"></i>
-            <p>Color Expand</p>
-          </div>
+        <div id="loading-overlay" class="loading-overlay hidden">
+            <div class="spinner"></div>
+            <p>Processing your image...</p>
         </div>
-      </div>
 
-      <div class="spinner" id="spinner">
-        <i class="fas fa-spinner fa-spin"></i>
-        <p>Processing...</p>
-      </div>
-      <div class="preview" id="preview">
-        <img src="" alt="Processed Image" id="previewImg" />
-      </div>
-      <div class="success" id="success">
-        <p>Operation completed! Download your image below:</p>
-        <a href="#" class="button" id="downloadBtn">Download Image</a>
-      </div>
+        <div id="functions-popup" class="functions-popup hidden">
+            <h2>Select a Function</h2>
+            <div class="tiles">
+                <button class="tile" data-action="remove_bg">
+                    <i data-lucide="scissors" class="tile-icon"></i>
+                    <span>Remove Background</span>
+                </button>
+                <button class="tile" data-action="uncrop">
+                    <i data-lucide="maximize" class="tile-icon"></i>
+                    <span>Uncrop Image</span>
+                </button>
+                <button class="tile" data-action="create_pattern">
+                    <i data-lucide="grid" class="tile-icon"></i>
+                    <span>Create Pattern</span>
+                </button>
+                <button class="tile" data-action="extend_ai">
+                    <i data-lucide="wand" class="tile-icon"></i>
+                    <span>Extend with AI</span>
+                </button>
+                <button class="tile" data-action="search">
+                    <i data-lucide="search" class="tile-icon"></i>
+                    <span>Search Graphic</span>
+                </button>
+                <button class="tile tile-disabled">
+                    <i data-lucide="clock" class="tile-icon"></i>
+                    <span>Coming Soon</span>
+                </button>
+            </div>
+
+            <div id="ai-prompt-container" class="prompt-container hidden">
+                <textarea id="ai-prompt" class="prompt-input" placeholder="Example: Extend the sky... "></textarea>
+                <button id="apply-ai-prompt" class="btn-primary">Generate</button>
+            </div>
+        </div>
     </div>
-
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script>
-      // DOM Elements
-      const dropArea = document.getElementById("dropArea");
-      const fileInput = document.getElementById("fileInput");
-      const popup = document.getElementById("popup");
-      const spinner = document.getElementById("spinner");
-      const success = document.getElementById("success");
-      const preview = document.getElementById("preview");
-      const previewImg = document.getElementById("previewImg");
-      const downloadBtn = document.getElementById("downloadBtn");
-      const canvasContainer = document.getElementById("canvasContainer");
-      const imageCanvas = document.getElementById("imageCanvas");
-      const drawCanvas = document.getElementById("drawCanvas");
-      const drawingControls = document.getElementById("drawingControls");
-      const maskInstructions = document.getElementById("maskInstructions");
-      const brushSize = document.getElementById("brushSize");
-      const clearMaskBtn = document.getElementById("clearMask");
-      const applyMaskBtn = document.getElementById("applyMask");
-
-      let selectedFile = null;
-      let isDrawing = false;
-      let ctx = drawCanvas.getContext("2d");
-
-      // Drag and drop handlers
-      dropArea.addEventListener("click", () => fileInput.click());
-
-      dropArea.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        dropArea.style.background = "rgba(255, 255, 255, 0.1)";
-      });
-
-      dropArea.addEventListener("dragleave", () => {
-        dropArea.style.background = "transparent";
-      });
-
-      dropArea.addEventListener("drop", (e) => {
-        e.preventDefault();
-        dropArea.style.background = "transparent";
-        const files = e.dataTransfer.files;
-        handleFiles(files);
-      });
-
-      fileInput.addEventListener("change", (e) => handleFiles(e.target.files));
-
-      function handleFiles(files) {
-        if (files.length > 0) {
-          selectedFile = files[0];
-          if (validateImage(selectedFile)) {
-            popup.style.display = "block";
-          } else {
-            alert("Please upload a valid image file.");
-          }
-        }
-      }
-
-      function validateImage(file) {
-        const validTypes = [
-          "image/jpeg",
-          "image/png",
-          "image/gif",
-          "image/webp",
-        ];
-        if (!validTypes.includes(file.type)) {
-          console.error("Invalid file type:", file.type);
-          return false;
-        }
-        return true;
-      }
-
-      function setupDrawing(file) {
-        const img = new Image();
-        img.onload = () => {
-          // Set canvas dimensions
-          const maxWidth = 800;
-          const scale = Math.min(1, maxWidth / img.width);
-          const width = img.width * scale;
-          const height = img.height * scale;
-
-          imageCanvas.width = drawCanvas.width = width;
-          imageCanvas.height = drawCanvas.height = height;
-
-          // Draw image on image canvas
-          const imgCtx = imageCanvas.getContext("2d");
-          imgCtx.drawImage(img, 0, 0, width, height);
-
-          // Setup drawing canvas
-          ctx = drawCanvas.getContext("2d");
-          ctx.fillStyle = "rgba(255, 0, 0, 0.5)";
-
-          // Show canvas container and controls
-          canvasContainer.style.display = "block";
-          drawingControls.style.display = "block";
-          maskInstructions.style.display = "block";
-
-          // Adjust container height to match canvas
-          canvasContainer.style.height = `${height}px`;
-        };
-        img.src = URL.createObjectURL(file);
-      }
-
-      // Drawing event listeners
-      drawCanvas.addEventListener("mousedown", startDrawing);
-      drawCanvas.addEventListener("mousemove", draw);
-      drawCanvas.addEventListener("mouseup", stopDrawing);
-      drawCanvas.addEventListener("mouseout", stopDrawing);
-
-      function startDrawing(e) {
-        isDrawing = true;
-        draw(e);
-      }
-
-      function draw(e) {
-        if (!isDrawing) return;
-        const rect = drawCanvas.getBoundingClientRect();
-        const scaleX = drawCanvas.width / rect.width;
-        const scaleY = drawCanvas.height / rect.height;
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleY;
-
-        ctx.beginPath();
-        ctx.arc(x, y, brushSize.value, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      function stopDrawing() {
-        isDrawing = false;
-      }
-
-      clearMaskBtn.addEventListener("click", () => {
-        ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-      });
-
-      applyMaskBtn.addEventListener("click", async () => {
-        // Convert mask canvas to binary mask
-        const maskData = drawCanvas.toDataURL("image/png");
-
-        const formData = new FormData();
-        formData.append("image", selectedFile);
-        formData.append("mask", maskData);
-        formData.append("operation", "remove_object");
-
-        spinner.style.display = "block";
-        canvasContainer.style.display = "none";
-        drawingControls.style.display = "none";
-        maskInstructions.style.display = "none";
-
-        try {
-          const response = await fetch("/process", {
-            method: "POST",
-            body: formData,
-          });
-
-          if (!response.ok) {
-            throw new Error("Processing failed");
-          }
-
-          const blob = await response.blob();
-          const url = URL.createObjectURL(blob);
-
-          spinner.style.display = "none";
-          preview.style.display = "block";
-          previewImg.src = url;
-          success.style.display = "block";
-          downloadBtn.href = url;
-          downloadBtn.download = "processed-image.png";
-        } catch (error) {
-          console.error("Error:", error);
-          alert("Processing failed. Please try again.");
-          spinner.style.display = "none";
-        }
-      });
-
-      async function processImage(action) {
-        if (!selectedFile) {
-          alert("No file selected. Please upload an image first.");
-          return;
-        }
-
-        if (action === "remove_object") {
-          popup.style.display = "none";
-          setupDrawing(selectedFile);
-          return;
-        }
-
-        const formData = new FormData();
-        formData.append("image", selectedFile);
-        formData.append("operation", action);
-
-        popup.style.display = "none";
-        spinner.style.display = "block";
-
-        try {
-          const response = await fetch("/process", {
-            method: "POST",
-            body: formData,
-          });
-
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || "Processing failed.");
-          }
-
-          const blob = await response.blob();
-          const url = URL.createObjectURL(blob);
-
-          // Show the result
-          spinner.style.display = "none";
-          preview.style.display = "block";
-          previewImg.src = url;
-
-          success.style.display = "block";
-          downloadBtn.href = url;
-          downloadBtn.download = "processed-image.png";
-        } catch (error) {
-          console.error("Error during image processing:", error);
-          alert(`Something went wrong: ${error.message}`);
-          spinner.style.display = "none";
-        }
-      }
-
-      document
-        .getElementById("removeBg-precise")
-        .addEventListener("click", () => processImage("remove_bg_precise"));
-      document
-        .getElementById("removeObject")
-        .addEventListener("click", () => processImage("remove_object"));
-      document
-        .getElementById("expandImage")
-        .addEventListener("click", () => processImage("expand_image"));
-      document
-        .getElementById("expandColor")
-        .addEventListener("click", () => processImage("expand_color"));
+        lucide.createIcons();
     </script>
-  </body>
+</body>
 </html>
