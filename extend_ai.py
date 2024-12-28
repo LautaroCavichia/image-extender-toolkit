@@ -5,7 +5,7 @@ import io
 
 import numpy as np
 import torch
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 from diffusers import StableDiffusionInpaintPipeline
 
 def setup_pipeline():
@@ -22,15 +22,16 @@ def setup_pipeline():
     )
     device = "cuda" if torch.cuda.is_available() else "cpu"
     pipe = pipe.to(device)
+    pipe.safety_checker = lambda images, clip_input: (images, [False] * len(images))
     return pipe
 
 def extend_ai(
     input_image: Image.Image,
     prompt: str = "",
     negative_prompt: str = "",
-    num_inference_steps: int = 6,
+    num_inference_steps: int = 4,
     guidance_scale: float = 7.5,
-    transition_size: int = 32,
+    transition_size: int = 256,
     direction: str = "top",
     expand_pixels: int = 256
 ) -> Image.Image:
@@ -55,7 +56,7 @@ def extend_ai(
     pipe = setup_pipeline()
     
     width, height = input_image.size
-
+  
     # Determine new dimensions based on direction
     if direction in ["top", "bottom"]:
         new_width = width
@@ -67,7 +68,7 @@ def extend_ai(
         raise ValueError("Invalid direction. Choose from 'top', 'bottom', 'left', 'right'.")
 
     # Create a new blank image with the new dimensions
-    extended_image = Image.new("RGB", (new_width, new_height), color=(0, 0, 0))
+    extended_image = Image.new("RGB", (new_width, new_height), color=(255, 255, 255))
 
     # Paste the original image onto the new canvas
     if direction == "top":
@@ -96,10 +97,10 @@ def extend_ai(
     if transition_size > 0:
         if direction in ["top", "bottom"]:
             for y in range(expand_pixels - transition_size, expand_pixels):
-                blend_ratio = (y - (expand_pixels - transition_size)) / transition_size
+                blend_ratio = 1 - ((y - (expand_pixels - transition_size)) / transition_size)
                 blend_ratio = np.clip(blend_ratio, 0, 1)
                 if direction == "top":
-                    mask_pixels[y, :] = int(255 * blend_ratio)
+                    mask_pixels[expand_pixels + y, :] = int(255 * blend_ratio)
                 else:  # bottom
                     mask_pixels[new_height - expand_pixels + y, :] = int(255 * blend_ratio)
         elif direction in ["left", "right"]:
@@ -112,6 +113,17 @@ def extend_ai(
                     mask_pixels[:, new_width - expand_pixels + x] = int(255 * blend_ratio)
 
     mask = Image.fromarray(mask_pixels, mode="L")
+    
+  
+    
+    #round to nearest multiple of 8 
+    
+    new_width = (new_width + 7) & ~7
+    new_height = (new_height + 7) & ~7
+
+    print("prompt", prompt)
+    mask.save(os.path.join("mask.png"))
+    extended_image.save(os.path.join("extended_image.png"))
 
     # Run inpainting
     inpainted_image = pipe(
@@ -121,6 +133,8 @@ def extend_ai(
         mask_image=mask,
         num_inference_steps=num_inference_steps,
         guidance_scale=guidance_scale,
+        width=new_width,
+        height=new_height,
     ).images[0]
 
     # To maintain original image dimensions, crop or adjust as needed
@@ -204,53 +218,3 @@ def download_image(url: str) -> Image.Image:
         img_data = url_response.read()
     input_image = Image.open(io.BytesIO(img_data)).convert("RGB")
     return input_image
-
-def main():
-    """
-    Main function to perform image outpainting.
-    """
-    # Ensure the output directory exists
-    output_dir = "output"
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Setup the inpainting pipeline
-    print("Setting up the pipeline...")
-    pipe = setup_pipeline()
-    print("Pipeline is ready.")
-
-    # Define parameters
-    prompt = "A beautiful sunset over the mountains with vibrant colors"
-    negative_prompt = "low quality, blurry, black lines"
-    direction = "top"  # Options: 'top', 'bottom', 'left', 'right'
-    transition_size = 32  # Smooth blending zone
-    expand_pixels = 256  # Pixels to expand each time
-    times_to_expand = 4  # Number of times to extend
-
-    # Image URL (you can change this to your desired image)
-    image_url = "https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/photo-1711580377289-eecd23d00370.jpeg?download=true"
-
-    # Download and load the image
-    print(f"Downloading image from {image_url}...")
-    input_image = download_image(image_url)
-    print(f"Original image size: {input_image.size}")
-
-    # Perform iterative extension
-    print(f"Starting to extend the image {times_to_expand} times towards {direction}...")
-    extended_image = iterative_extend(
-        pipe=pipe,
-        input_image=input_image,
-        prompt=prompt,
-        negative_prompt=negative_prompt,
-        num_inference_steps=50,
-        guidance_scale=7.5,
-        transition_size=transition_size,
-        direction=direction,
-        expand_pixels=expand_pixels,
-        times_to_expand=times_to_expand
-    )
-    print(f"Final extended image size: {extended_image.size}")
-
-    # Save the result
-    output_path = os.path.join(output_dir, "extended_result.png")
-    extended_image.save(output_path)
-    print(f"Extended image saved to {output_path}")
